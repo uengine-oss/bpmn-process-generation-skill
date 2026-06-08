@@ -14,7 +14,7 @@ description: 사용자가 만들고 싶은 업무 프로세스를 컨설팅한 �
 
 > 검증(validation) 단계는 이 skill 범위에서 **제외**합니다. (pdf2bpmn 에는 실행 검증 단계가 있지만 여기서는 다루지 않습니다.)
 
-> **실행 모드**: 이 skill 은 (1) **대화형(Claude Code)** — `.bpmn/` 폴더에 산출물 저장, 또는 (2) **서비스(ProcessGPT deepagent)** — 파일 대신 단일 JSON 산출물을 반환해 프론트가 DB에 저장, 두 모드로 동작합니다. 서비스 모드의 출력 계약은 [references/09-service-execution.md](references/09-service-execution.md) 를 따릅니다.
+> **실행 모드**: 이 skill 은 (1) **대화형(Claude Code)** — `.bpmn/` 폴더에 산출물 저장, 또는 (2) **서비스(ProcessGPT deepagent)** — 파일 대신 단일 JSON 산출물을 만들고, 스킬에 포함된 후처리 스크립트([scripts/](scripts/))로 **pdf2bpmn 와 동일하게 Supabase 저장(proc_def/form_def/users/agent_skills/tenants.skills) + 실행 검증(process-gpt-completion)** 까지 직접 수행, 두 모드로 동작합니다. 서비스 모드 규격·후처리 실행 절차는 [references/09-service-execution.md](references/09-service-execution.md) 를 따릅니다.
 
 ---
 

@@ -83,8 +83,37 @@
 
 ---
 
-## 프론트엔드 연동 (참고)
+## 후처리: 저장 + 검증을 스킬이 직접 수행 (권장)
 
-- deepagent 호출: `process-gpt-vue3` 의 `DeepAgentRouterService.sendMessageStream()` → `POST /process-gpt-deepagents/chat/stream` (SSE). 최종 결과는 `done` 이벤트의 `content`.
-- 저장: 프론트 `ProcessGPTBackend.saveGeneratedProcessArtifacts(result)` 가 위 JSON 을 받아 `putRawDefinition`(proc_def + form_def + proc_def_version) · `saveSkills`(tenants.skills) 로 persist 한다. (pdf2bpmn 의 `_save_proc_def`/`_save_form_def`/스킬 동기화와 동일 결과)
-- 스킬 등록(이 skill 자체를 deepagent 가 쓰게 하려면): `ProcessGPTBackend.uploadSkills({type:'url', url})` → `/claude-skills/skills/upload-from-github` 로 이 skill 저장소를 테넌트 스킬 볼륨에 업로드한다(또는 `{type:'file'}` ZIP 업로드).
+서비스 모드에서는 출력 계약 JSON 을 만든 뒤, **스킬에 포함된 후처리 스크립트(`scripts/`)** 를 deepagent 샌드박스에서 실행해 pdf2bpmn 와 **동일하게 저장·검증까지** 끝낸다. (프론트 저장 로직에 의존하지 않는다.)
+
+deepagent 샌드박스 도구(`sandbox_write_files_and_run` / `sandbox_run_shell`)는 `subprocess.run(shell=True, env=merged_env)` 로 임의 코드 실행·아웃바운드 네트워크가 가능하고, **deepagent 런타임의 환경변수(`SUPABASE_URL`/`SERVICE_ROLE_KEY`/`COMPLETION_ENGINE_URL` 등)를 그대로 상속**한다. 따라서 스킬 스크립트가 그 키로 Supabase 에 직접 write 하고 실행 엔진을 호출할 수 있다.
+
+### 실행 절차 (에이전트가 따라야 할 것)
+1. 위 출력 계약 JSON 을 샌드박스 파일로 쓴다. 예: `result.json`.
+2. 후처리 스크립트를 실행한다:
+   ```bash
+   pip install -r <skill_dir>/scripts/requirements.txt
+   python <skill_dir>/scripts/run_postprocess.py --input result.json --tenant <tenant_id>
+   ```
+   - `<skill_dir>` 는 마운트된 스킬 경로(`/app/skills/<tenant_id>/bpmn-process-generation-skill`).
+   - `tenant_id` 는 요청 컨텍스트에서 받는다.
+   - 검증을 끄려면 `--no-validate`.
+3. 스크립트가 출력하는 요약 JSON(`{"saved": {...}, "validation": {...}}`)을 사용자에게 보고한다.
+
+> ⚠️ **이중 저장 방지**: 스킬 후처리(저장)를 수행했다면, 최종 `done` 응답은 **사람이 읽는 요약**(저장된 proc_def/폼/에이전트/검증 결과)으로 emit 하고 **출력 계약 JSON(`processDefinition` 통째)을 최종 텍스트로 내보내지 않는다.** (프론트 `ChatRoomPage.onDone` 의 자동 저장 훅은 `processDefinition` 포함 JSON 을 감지해 다시 저장하므로, 스킬이 이미 저장한 경우 contract JSON 을 최종 메시지로 내보내면 중복 저장된다.) contract JSON 은 샌드박스 `result.json` 파일로만 쓰고 최종 응답에는 싣지 않는다.
+
+### 무엇이 저장/검증되나 (pdf2bpmn 동일)
+- **저장** (`scripts/save_to_supabase.py`): `proc_def`(definition=flattened, bpmn=null) + `configuration.proc_map` + `form_def`(html+fields_json) + `users`(is_agent, 중복 재사용) + `agent_skills` + `tenants.skills`. `elements[]` → flattened 변환 포함.
+- **검증** (`scripts/validate_process.py` + 벤더링한 `validation/process_validator.py`): `COMPLETION_ENGINE_URL` 의 `/initiate`·`/complete` 로 start→end 실제 실행, `bpm_proc_inst` 폴링으로 진행 확인, 결함 발견 시 LLM 으로 정의 자동 교정 후 재저장(최대 N회). 엔진 미도달 시 graceful skip.
+
+> 필요한 env·옵션은 [../scripts/README.md](../scripts/README.md) 참조. 키는 스킬 파일에 넣지 말고 deepagent 런타임 env 상속을 사용한다.
+
+## (대안) 프론트엔드 저장 연동
+
+스킬 후처리를 쓰지 않을 경우의 대안. deepagent `done` content 의 출력 계약 JSON 을 프론트가 받아 저장:
+- `process-gpt-vue3` `ChatRoomPage.vue` `onDone` → `ProcessGPTBackend.saveGeneratedProcessArtifacts(result)` → `proc_def`/`form_def`/`users(agent)`/`agent_skills`/`tenants.skills` persist.
+- 이 경우 위 `scripts/` 후처리는 실행하지 않는다(이중 저장 방지). 둘 중 하나만 사용한다.
+
+## 스킬 등록 (이 skill 자체를 deepagent 가 쓰게 하려면)
+`ProcessGPTBackend.uploadSkills({type:'url', url})` → `/claude-skills/skills/upload-from-github` 로 이 skill 저장소를 테넌트 스킬 볼륨에 업로드(또는 `{type:'file'}` ZIP). 업로드되면 `/app/skills/<tenant>/` 에 저장되어 deepagents 가 로드한다.
