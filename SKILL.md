@@ -1,6 +1,6 @@
 ---
 name: bpmn-process-generation
-description: 사용자가 만들고 싶은 업무 프로세스를 컨설팅한 뒤 ProcessGPT 서비스용 BPMN 프로세스 정의(JSON)를 단계별로 생성하는 가이드. 사용자가 "프로세스 만들고 싶어", "업무 흐름 자동화", "휴가 신청 프로세스 만들어줘", "결재 프로세스 설계", "BPMN 만들어줘", "워크플로우 만들어줘", "/bpmn", "/bpmn:consult", "/bpmn:generate", "프로세스 정의 생성", "이 업무를 프로세스로 만들고 싶다" 같은 표현을 쓰거나, 어떤 반복 업무·승인 흐름·자동화하고 싶은 절차를 설명하면서 그것을 실행 가능한 프로세스로 만들고 싶어할 때 반드시 트리거하세요. BPMN에 익숙하지 않은 사용자도 컨설팅(초안 제안·질문)을 통해 흐름을 함께 다듬고, 스킬·에이전트·DMN 규칙·폼·참조정보까지 단계별로 붙여 완성된 프로세스 정의 JSON을 만들 수 있도록 안내합니다.
+description: 사용자가 만들고 싶은 업무 프로세스를 컨설팅한 뒤 ProcessGPT 서비스용 BPMN 프로세스 정의(JSON)를 단계별로 생성하는 가이드. 사용자가 "프로세스 만들고 싶어", "업무 흐름 자동화", "휴가 신청 프로세스 만들어줘", "결재 프로세스 설계", "BPMN 만들어줘", "워크플로우 만들어줘", "/bpmn", "/bpmn:consult", "/bpmn:generate", "프로세스 정의 생성", "이 업무를 프로세스로 만들고 싶다" 같은 표현을 쓰거나, 어떤 반복 업무·승인 흐름·자동화하고 싶은 절차를 설명하면서 그것을 실행 가능한 프로세스로 만들고 싶어할 때 반드시 트리거하세요. 또한 사용자가 **업무 규정·매뉴얼·SOP·양식 같은 문서(PDF·docx·xlsx·이미지)를 업로드/첨부하거나 절차 텍스트를 붙여넣으며** "이 문서대로 프로세스 만들어줘", "이 매뉴얼 기준으로", "첨부 보고 흐름 만들어줘" 라고 할 때도 트리거해, 문서 내용에서 흐름을 추출해 생성합니다. BPMN에 익숙하지 않은 사용자도 컨설팅(초안 제안·질문)을 통해 흐름을 함께 다듬고, 스킬·에이전트·DMN 규칙·폼·참조정보까지 단계별로 붙여 완성된 프로세스 정의 JSON을 만들 수 있도록 안내합니다. 선택된 재사용 스킬은 skill-creator 로 정식 스킬로 생성합니다.
 ---
 
 # BPMN Process Generation
@@ -38,7 +38,7 @@ description: 사용자가 만들고 싶은 업무 프로세스를 컨설팅한 �
 
 ## 사용자 진입 패턴
 
-사용자가 이 skill을 호출하는 방식은 크게 3가지입니다. 어떤 경우든 **첫 응답에서는 [references/00-orientation.md](references/00-orientation.md) 의 판별**부터 합니다 (이미 진행 중인 세션 제외).
+사용자가 이 skill을 호출하는 방식은 크게 4가지입니다. 어떤 경우든 **첫 응답에서는 [references/00-orientation.md](references/00-orientation.md) 의 판별**부터 합니다 (이미 진행 중인 세션 제외). 특히 **문서 첨부 여부를 가장 먼저** 확인합니다(아래 D).
 
 ### A. 처음 시작 ("프로세스 만들고 싶어", "/bpmn", "휴가 신청 프로세스 만들어줘")
 
@@ -51,6 +51,10 @@ description: 사용자가 만들고 싶은 업무 프로세스를 컨설팅한 �
 ### C. 진행 중 세션 재개 ("어디까지 했지?", "이어서 하자")
 
 → `.bpmn/` 디렉토리에서 `process-definition.json` 과 마지막 산출물을 확인해 현재 위치를 요약하고, 다음 단계를 제안합니다.
+
+### D. 문서 업로드 기반 ("이 매뉴얼대로 만들어줘", 규정/SOP/양식 파일 첨부, 절차 텍스트 붙여넣기)
+
+→ 흐름을 추측하기 전에 **먼저 문서를 읽습니다.** [references/10-document-intake.md](references/10-document-intake.md) 규칙으로 PDF·docx·xlsx·이미지·텍스트에서 *있는 그대로의 업무 흐름(as-is)* 을 추출한 뒤, 그것을 컨설팅 초안으로 제시하고 다듬어 1단계로 이어갑니다. (이 skill 의 모태인 pdf2bpmn 의 "문서 → BPMN" 출발점을 그대로 지원합니다.) 문서 신호가 보이면 A~C 보다 이 패턴을 우선합니다.
 
 ---
 
@@ -123,6 +127,7 @@ description: 사용자가 만들고 싶은 업무 프로세스를 컨설팅한 �
 - 컨설팅에서 **시스템/도구/프로그램을 무엇을 쓰는지 묻지 않는다.** (우리가 그 도구를 만들어주기 때문 — 사용자에게 혼란만 준다.) 소요 시간 등 프로세스 정의에 불필요한 질문도 하지 않는다. 자세한 금지 질문은 [references/01-consulting.md](references/01-consulting.md) 참조.
 - 2단계 JSON 은 **reference 의 생성 규칙을 그대로** 따른다. ID는 영문 소문자+언더스코어, 이름/설명은 한글, StartEvent·EndEvent·Sequence 필수 등 — 임의로 구조를 바꾸지 않는다.
 - 3단계에서 **사용자에게 묻지 않고** 스킬/에이전트/DMN 을 임의로 다 생성하지 않는다. 반드시 후보를 보여주고 선택을 받는다 (HITL). 후보는 종류별로 **3개 내외 자동 추천**하고, 커스텀은 `AskUserQuestion` 의 자동 "기타" 입력으로 받는다(옵션에 "기타"를 직접 만들지 않는다).
+- **4단계 스킬 생성은 손으로 SKILL.md 를 쓰지 않는다 — `skill-creator` 스킬을 호출해 만든다.** 사용 가능한 스킬 목록에 `skill-creator` 가 있으면 반드시 Skill 도구로 호출하고, "직접 써도 같다"는 이유로 fallback 을 택하지 않는다. fallback(직접 작성)은 skill-creator 가 **정말 없을 때만**이며, 어느 경로로 만들었는지 사용자에게 **사실대로** 밝힌다. (규칙: [references/04-skills.md](references/04-skills.md) 단계 B)
 - **폼·참조정보(5·6단계)는 "만들까요?" 묻지 않는다.** 항상 생성·연결해야 하는 필수 산출물이므로, 3단계 답변 직후 4·5·6단계를 **자동 연속 실행**하고 마지막에 한 번만 결과를 요약·수정 안내한다.
 - 단, **1·2·3단계 사이**에서는 사용자 확인 없이 단계를 몰아서 진행하지 않는다(컨설팅 합의 → JSON 생성 → 후보 선택은 각각 사용자 개입 지점).
 - 산출물에 placeholder만 남기지 않는다. 사용자와 대화해 **실제 내용으로** 채운다.
@@ -139,12 +144,13 @@ description: 사용자가 만들고 싶은 업무 프로세스를 컨설팅한 �
 | [references/01-consulting.md](references/01-consulting.md) | **컨설팅 규칙** — 흐름 초안 제안법, 금지 질문, 질문 방식, 생성 제안 타이밍 |
 | [references/02-generate-definition.md](references/02-generate-definition.md) | **프로세스 정의 JSON 생성 규칙(엄격)** — 전체 스키마, 요소 타입, 역할/서브프로세스 규칙 |
 | [references/03-elicit-artifacts.md](references/03-elicit-artifacts.md) | **HITL** — 스킬/에이전트/DMN 후보 도출 + 선택 질문 방식 |
-| [references/04-skills.md](references/04-skills.md) | 스킬 카드 생성 규칙 + JSON 반영(`activity.skills`, `roles`/`skills`) |
+| [references/04-skills.md](references/04-skills.md) | **skill-creator 로 재사용 스킬 생성** + JSON 반영(`activity.skills`, `skills[]`) |
 | [references/05-agents.md](references/05-agents.md) | 에이전트(역할) 생성 규칙 + JSON 반영(`activity.agent`, `roles`) |
 | [references/06-dmn.md](references/06-dmn.md) | DMN 의사결정/규칙 생성 + JSON 반영(`dmn_decisions`, `dmn_rules`) |
 | [references/07-forms.md](references/07-forms.md) | 폼 HTML 생성 규칙(컴포넌트 규격) + JSON 반영(`activity.tool`) |
 | [references/08-reference-info.md](references/08-reference-info.md) | 참조정보 — `activity.inputData`, gateway `conditionData` 연결 |
 | [references/09-service-execution.md](references/09-service-execution.md) | **서비스(ProcessGPT deepagent) 실행 모드** — `.bpmn/` 파일 대신 단일 JSON 산출물로 반환하는 출력 계약. 프론트가 받아 DB 저장 |
+| [references/10-document-intake.md](references/10-document-intake.md) | **문서 업로드 기반 생성** — PDF·docx·xlsx·이미지·텍스트에서 as-is 흐름 추출 → 컨설팅 초안으로 연결 |
 
 템플릿은 [assets/templates/](assets/templates/) 에 있습니다. 각 단계 reference 에서 어떤 템플릿을 쓸지 명시합니다.
 

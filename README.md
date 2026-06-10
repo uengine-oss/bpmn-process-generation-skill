@@ -15,6 +15,8 @@ BPMN을 몰라도, "휴가 신청 프로세스 만들어줘" 같은 한마디만
 - BPMN 초심자도 따라갈 수 있도록 용어를 풀어 설명 (액티비티=사람이 하는 일 한 단계, 게이트웨이=갈림길 등)
 - 흐름은 유연하게(컨설팅), 출력 구조는 엄격하게(서비스 규격 JSON 그대로)
 - 스킬/에이전트/DMN은 **사용자가 고른 것만** 생성 (HITL)
+- **문서 업로드 기반 생성**: 업무 규정·매뉴얼·SOP·양식(PDF·docx·xlsx·이미지)을 올리면 그 내용에서 흐름을 추출해 프로세스로 만듦
+- **선택된 재사용 스킬은 skill-creator 로 정식 스킬로 생성** (단순 텍스트 카드가 아니라 SKILL.md 구조의 실제 스킬)
 
 > 검증(validation) 단계는 이 skill 범위에서 제외합니다. 검증·실행이 필요하면 ProcessGPT 본 서비스로 진행하세요.
 
@@ -62,7 +64,9 @@ git clone https://github.com/<owner>/bpmn-process-generation.git ~/.claude/skill
 │   ├── 05-agents.md
 │   ├── 06-dmn.md
 │   ├── 07-forms.md
-│   └── 08-reference-info.md
+│   ├── 08-reference-info.md
+│   ├── 09-service-execution.md      # 서비스(deepagent) 실행 모드 출력 계약
+│   └── 10-document-intake.md        # 문서 업로드 → 흐름 추출
 └── assets/
     └── templates/
         ├── process-definition.schema.json

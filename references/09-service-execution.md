@@ -83,6 +83,32 @@
 
 ---
 
+## 표시 모드: 기존 프론트 UI 에 프로세스 프리뷰 렌더
+
+프론트(`process-gpt-vue3`)의 `Chat.vue` 는 **에이전트 메시지 content 에 `processDefinitionId` + `elements` 가 든 JSON 이 있으면 자동으로 인라인 BPMN 프리뷰를 렌더**한다 (`isProcessJsonMessage` → `getDisplayMessageContent` → `openInlineProcessPreview` → `emitPreviewBpmn` → `preview-bpmn` 이벤트). **프론트 코드 수정 불필요.**
+
+따라서 서비스 모드에서 **화면 표시가 필요하면**, 최종 응답 메시지에 **elements 형식(02-generate-definition 규격, `processDefinitionId` + `elements[]`)의 processDefinition JSON 을 포함**한다. 권장 형식:
+
+````
+프로세스를 생성했어요. (요약: 단계 N개, 분기 …)
+
+```json
+{ "processDefinitionId": "leave_request_process", "processDefinitionName": "...", "elements": [ ... ], "roles": [ ... ], ... }
+```
+````
+
+- Chat.vue 가 raw JSON 블록을 **숨기고** "프로세스가 생성되었습니다." 로 치환한 뒤 프리뷰를 띄운다.
+- 반드시 **flattened 가 아니라 `elements[]` 형식**이어야 한다(프론트 프리뷰가 기대하는 형식). 저장용 flattened 변환은 `scripts/` 가 내부에서 처리한다.
+
+### 표시 vs 저장 (충돌 정리)
+- **표시(Chat.vue 프리뷰)는 저장이 아니다** — 렌더만 한다.
+- 저장 경로는 **하나만** 쓴다:
+  - (A) 스킬 후처리 `scripts/run_postprocess.py` 로 저장(아래) — 이 경우에도 표시용 JSON 은 메시지에 넣어도 무방하다(프리뷰는 중복 저장 아님). 단, 프론트 `ChatRoomPage.onDone` 의 자동저장 훅을 **켜두지 않는다**(스크립트가 이미 저장하므로 이중 저장 방지).
+  - (B) 프론트 저장(`saveGeneratedProcessArtifacts`/onDone) — 이 경우 스킬은 표시용 JSON 만 emit 하고 `scripts/` 후처리는 실행하지 않는다.
+- 요약: **표시용 JSON emit 은 항상 가능**, **저장은 A 또는 B 중 하나만**.
+
+---
+
 ## 후처리: 저장 + 검증을 스킬이 직접 수행 (권장)
 
 서비스 모드에서는 출력 계약 JSON 을 만든 뒤, **스킬에 포함된 후처리 스크립트(`scripts/`)** 를 deepagent 샌드박스에서 실행해 pdf2bpmn 와 **동일하게 저장·검증까지** 끝낸다. (프론트 저장 로직에 의존하지 않는다.)

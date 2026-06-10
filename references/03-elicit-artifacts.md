@@ -94,7 +94,7 @@ AskUserQuestion(questions=[
 
 사용자 응답을 받은 뒤:
 
-1. **스킬을 골랐으면** → [04-skills.md](04-skills.md) 로드 → 선택된 스킬만 카드 생성 + JSON 반영.
+1. **스킬을 골랐으면** → [04-skills.md](04-skills.md) 로드 → 선택된 스킬만 **skill-creator 로 정식 스킬 생성** + JSON 반영.
 2. **에이전트를 골랐으면** → [05-agents.md](05-agents.md) 로드 → 선택된 역할·스킬에 에이전트 연결 + JSON 반영.
 3. **DMN 을 골랐으면** → [06-dmn.md](06-dmn.md) 로드 → 선택된 게이트웨이를 DMN 의사결정/규칙으로 생성 + JSON 반영.
 4. 아무것도 안 골랐으면 → "자동화 요소 없이 진행할게요" 하고 바로 5단계(폼)로.
