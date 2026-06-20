@@ -1,11 +1,13 @@
-# 07 – Forms: 액티비티 입력 폼(HTML) 생성 + JSON 반영
+﻿# 07 – Forms: 액티비티 입력 폼(HTML) 생성 + JSON 반영
+
+> 📁 **경로 주의**: 아래 `/workspace/.bpmn/forms/...` 는 **시스템 프롬프트가 지정한 이 대화 전용 디렉터리 `/workspace/.bpmn/<방id>/forms/`** 를 뜻한다(방마다 분리). `complete_process_generation` 도 그 방 디렉터리에서 폼을 읽는다.
 
 **목적**: 각 UserActivity 에서 사람이 입력할 **폼(HTML)** 을 만든다. 폼은 정해진 컴포넌트 태그와 그리드 규칙을 그대로 따라야 한다(프론트가 이 규격으로 렌더). 만든 폼을 Activity 의 `tool` 에 `formHandler:<form_id>` 로 연결한다.
 
 > 이 규칙은 pdf2bpmn 의 폼 생성기(FormDesignGenerator 스타일) 컴포넌트 규격을 옮긴 것입니다. 전체 컴포넌트 목록은 [assets/templates/form-components.md](../assets/templates/form-components.md) 참조.
 
 산출물:
-- `.bpmn/forms/<activity_id>.html` (Activity 마다 1개)
+- `/workspace/.bpmn/forms/<activity_id>.html` (Activity 마다 1개)
 - `process-definition.json` 업데이트 (`activity.tool = "formHandler:<form_id>"`)
 
 ---
@@ -94,7 +96,7 @@
 ## 프로세스 정의 JSON 반영
 
 - 각 Activity 에 `"tool": "formHandler:<form_id>"` 를 설정한다.
-- 폼 HTML 은 `.bpmn/forms/<activity_id>.html` 로 저장.
+- 폼 HTML 은 `/workspace/.bpmn/forms/<activity_id>.html` 로 저장.
 - (참조정보 단계를 위해) 각 폼의 `form_id` 와 필드 `name` 목록을 기억해 둔다 — 6단계 inputData/conditionData 가 `<form_id>.<field_name>` 형식을 쓴다.
 
 ---

@@ -14,7 +14,3 @@ Thumbs.db
 
 # Working artifacts
 .bpmn/
-
-# Python
-__pycache__/
-*.pyc

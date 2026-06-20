@@ -1,4 +1,4 @@
-# 08 – Reference Info: 참조정보(inputData / conditionData) 연결
+﻿# 08 – Reference Info: 참조정보(inputData / conditionData) 연결
 
 **목적**: 폼이 만들어진 뒤, 각 단계가 **이전 단계의 어떤 입력값을 참조**할지 연결한다. 두 가지를 채운다:
 - Activity 의 `inputData`: 이 태스크를 수행할 때 참고할 **이전 태스크 폼의 필드**.
@@ -56,7 +56,7 @@
 
 ## 프로세스 정의 JSON 반영
 
-`.bpmn/process-definition.json` 을 직접 Edit:
+`/workspace/.bpmn/process-definition.json` 을 직접 Edit:
 1. 각 Activity 의 `inputData` 를 선행 후보로 한정해 채운다(중복 제거, 상한 적용).
 2. 각 ExclusiveGateway 의 `conditionData` 를 채운다.
 3. 메인 `elements` 와 (있으면) 서브프로세스 `children` 양쪽 모두 동기화한다.
@@ -76,6 +76,6 @@
 > - 폼: 단계별 입력 양식 N개
 > - 참조정보: 각 단계가 이전 입력을 참조하도록 연결
 >
-> 산출물은 `.bpmn/` 에 있습니다 (`process-definition.json`, `skills/`, `forms/`). 수정하고 싶은 부분이 있으면 말씀해 주세요."
+> 산출물은 `/workspace/.bpmn/` 에 있습니다 (`process-definition.json`, `skills/`, `forms/`). 수정하고 싶은 부분이 있으면 말씀해 주세요."
 
 > 검증(validation) 단계는 이 skill 범위 밖입니다. 사용자가 검증·실행을 원하면 ProcessGPT 본 서비스로 안내합니다.

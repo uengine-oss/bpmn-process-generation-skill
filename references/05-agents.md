@@ -1,4 +1,4 @@
-# 05 – Agents: 에이전트(역할 담당자) 생성 + JSON 반영
+﻿# 05 – Agents: 에이전트(역할 담당자) 생성 + JSON 반영
 
 **목적**: 3단계에서 사용자가 고른 에이전트 후보(역할 × 스킬)에 대해 **에이전트 프로필**을 만들고, 그 에이전트를 담당 Activity 와 `roles` 에 연결한다. 에이전트는 특정 역할이 반복 수행하는 작업을 자동으로 처리하는 담당자다.
 
@@ -6,7 +6,7 @@
 
 산출물:
 - `process-definition.json` 업데이트 (`activity.agent` 채움 + `roles[].endpoint`/`origin` 갱신, 자동화 필드)
-- (선택) 에이전트 프로필을 사람이 보게 하려면 `.bpmn/skills/` 옆에 `agents/<candidate_id>.md` 로 메모할 수 있다. 필수는 아님.
+- (선택) 에이전트 프로필을 사람이 보게 하려면 `/workspace/.bpmn/skills/` 옆에 `agents/<candidate_id>.md` 로 메모할 수 있다. 필수는 아님.
 
 ---
 
@@ -37,7 +37,7 @@
 
 ## 프로세스 정의 JSON 반영
 
-`.bpmn/process-definition.json` 을 직접 Edit 한다:
+`/workspace/.bpmn/process-definition.json` 을 직접 Edit 한다:
 
 1. **담당 Activity 의 `agent`** 에 에이전트 식별자를 넣는다. (신규면 새 id, 재사용이면 기존 id.)
    ```json

@@ -1,4 +1,4 @@
-# 06 – DMN: 분기 판단을 의사결정 규칙으로 + JSON 반영
+﻿# 06 – DMN: 분기 판단을 의사결정 규칙으로 + JSON 반영
 
 **목적**: 3단계에서 사용자가 고른 ExclusiveGateway 들을, 분기 조건을 표로 정리한 **DMN 의사결정(decision) + 규칙(rule)** 으로 만들어 프로세스 정의 JSON 에 추가한다. 게이트웨이 1개 = 의사결정 1개, 그 게이트웨이의 각 분기 = 규칙 1개.
 
@@ -63,7 +63,7 @@
 
 ## 프로세스 정의 JSON 반영
 
-`.bpmn/process-definition.json` 을 직접 Edit:
+`/workspace/.bpmn/process-definition.json` 을 직접 Edit:
 
 1. 최상위에 `dmn_decisions` 배열(없으면 생성)에 decision 추가.
 2. 최상위에 `dmn_rules` 배열(없으면 생성)에 rule 들 추가.

@@ -16,6 +16,7 @@ BPMN을 몰라도, "휴가 신청 프로세스 만들어줘" 같은 한마디만
 - 흐름은 유연하게(컨설팅), 출력 구조는 엄격하게(서비스 규격 JSON 그대로)
 - 스킬/에이전트/DMN은 **사용자가 고른 것만** 생성 (HITL)
 - **문서 업로드 기반 생성**: 업무 규정·매뉴얼·SOP·양식(PDF·docx·xlsx·이미지)을 올리면 그 내용에서 흐름을 추출해 프로세스로 만듦
+- **여러 프로세스 한 번에**: 한 문서에 별개 프로세스가 여러 개거나 여러 문서/여러 요청이면 **고정 일괄 절차**로 진행 — 만들 프로세스 선택 → 모든 프로세스 컨설팅 일괄 → 일괄 응답 → JSON 일괄 생성 → 프로세스별 아티팩트 패널 → 이후 일괄 실행 (프로세스별 `.bpmn/<NN>-<slug>/` 네임스페이스, 아티팩트 선택은 프로세스마다 별도 패널로 HITL 유지)
 - **선택된 재사용 스킬은 skill-creator 로 정식 스킬로 생성** (단순 텍스트 카드가 아니라 SKILL.md 구조의 실제 스킬)
 
 > 검증(validation) 단계는 이 skill 범위에서 제외합니다. 검증·실행이 필요하면 ProcessGPT 본 서비스로 진행하세요.
@@ -66,7 +67,8 @@ git clone https://github.com/<owner>/bpmn-process-generation.git ~/.claude/skill
 │   ├── 07-forms.md
 │   ├── 08-reference-info.md
 │   ├── 09-service-execution.md      # 서비스(deepagent) 실행 모드 출력 계약
-│   └── 10-document-intake.md        # 문서 업로드 → 흐름 추출
+│   ├── 10-document-intake.md        # 문서 업로드 → 흐름 추출
+│   └── 11-multi-process.md          # 여러 프로세스 고정 일괄 절차·네임스페이스
 └── assets/
     └── templates/
         ├── process-definition.schema.json
@@ -131,6 +133,19 @@ BPMN 프로세스 만들어줘
 ```
 
 `process-definition.json` 은 **하나의 파일을 단계마다 업데이트**합니다.
+
+**여러 프로세스일 때**는 충돌을 막기 위해 프로세스별 하위 폴더로 나뉩니다(1개면 위 플랫 구조 그대로):
+
+```
+.bpmn/
+├── index.md                     # 프로세스 인벤토리 + 진행상태 표
+├── 01-<slug>/                   # 프로세스 1
+│   ├── 01-consulting.md
+│   ├── process-definition.json
+│   ├── skills/
+│   └── forms/
+└── 02-<slug>/                   # 프로세스 2 …
+```
 
 ---
 

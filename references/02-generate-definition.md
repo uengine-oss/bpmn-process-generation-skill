@@ -1,10 +1,10 @@
-# 02 – Generate Definition: 프로세스 정의 JSON 생성 (엄격 규칙)
+﻿# 02 – Generate Definition: 프로세스 정의 JSON 생성 (엄격 규칙)
 
 **목적**: 1단계에서 합의한 흐름 초안을 **우리 서비스 규격의 프로세스 정의 JSON** 으로 생성한다. 이 단계의 출력 구조는 ProcessGPT 백엔드가 그대로 소비하므로 **아래 규칙을 그대로** 지켜야 한다. 흐름은 유연했지만 여기서부터는 구조가 엄격하다.
 
 > 이 규칙은 ProcessGPT 의 `process_definition_prompt.py` / `process_generation_messages.py` 의 생성 전용(Create-Only) 규칙을 옮긴 것입니다. 임의로 바꾸지 마세요.
 
-산출물: `.bpmn/process-definition.json` (이후 4·5·6단계에서 같은 파일을 계속 업데이트)
+산출물: `/workspace/.bpmn/process-definition.json` (이후 4·5·6단계에서 같은 파일을 계속 업데이트)
 
 전체 스키마 예시는 [assets/templates/process-definition.schema.json](../assets/templates/process-definition.schema.json) 에 있습니다. 이 reference 와 함께 보세요.
 
@@ -12,10 +12,28 @@
 
 ## 작업 정의 (생성 전용)
 
-- 너의 작업은 단 하나: **합의된 흐름 초안(`.bpmn/01-consulting.md`)에 기반해 프로세스 정의 JSON 한 개를 생성**하는 것.
+- 너의 작업은 단 하나: **합의된 흐름 초안(`/workspace/.bpmn/01-consulting.md`)에 기반해 프로세스 정의 JSON 한 개를 생성**하는 것.
 - 질의(askProcessDef) 응답이나 수정(modifications) 형식은 이 단계에서 쓰지 않는다. (수정 형식은 4~6단계 업데이트 시 사용 — 아래 "프로세스 변경" 참조)
 - `{"processDefinition":{...}}` 처럼 중첩 래퍼로 감싸지 말 것. **최상위에 `processDefinitionId`, `processDefinitionName`, `elements`** 가 있어야 한다.
 - 창작이 아니라, 합의된 흐름을 **안정적이고 일관된 BPMN 구조로 정리**하는 것이 목표. 명시적 근거 없는 새 단계/새 역할/새 게이트웨이를 만들지 말 것.
+
+---
+
+## ⛔ 절대 금지 — 일반 BPMN/Camunda 스키마로 만들지 말 것
+
+이 단계에서 가장 흔한 실패는 모델이 **자기 머릿속의 일반 BPMN(Camunda/Zeebe) JSON** 으로 생성하는 것이다. 그러면 검증(`validate_process_definition`)이 **반드시 실패**한다. 아래를 절대 쓰지 마라:
+
+| ❌ 쓰면 안 되는 것(일반 BPMN) | ✅ 반드시 이렇게(ProcessGPT) |
+|---|---|
+| `"type": "UserTask"` / `"ServiceTask"` / `"Task"` | `"elementType": "Activity"`, `"type": "UserActivity"` |
+| `"assignee"`, `"candidateGroups"`, `"candidateUsers"` | `"role": "역할명(한글)"` |
+| `"formKey": "..."` | (폼은 3단계에서) `"tool": "formHandler:<form_id>"` |
+| `elementType` 없이 `type` 만 | **모든 요소에 `elementType`** (Event/Activity/Gateway/Sequence) |
+| `"id": "submitApplication"`(camelCase) | `"id": "submit_application"`(영문 **소문자+언더스코어**) |
+| `sequenceFlows`/`flows` 별도 배열 | 흐름도 `elements` 안에 `elementType:"Sequence"` 로 |
+| `activities`/`events` 분리 배열 | **모두 `elements[]` 한 배열** 에 |
+
+핵심: **`elements[]` 안에 `elementType` 으로 구분**, Activity 는 `type:"UserActivity"` + `role` + `outputData`(1개 이상), 모든 비-Sequence 요소 뒤에 잇는 `Sequence`(source/target). 이 규격을 어기면 검증에서 critical 결함으로 막힌다.
 
 ---
 
@@ -52,8 +70,10 @@
 }
 ```
 
+> ⚠️ **조직도를 조회하거나 요청하지 않는다.** 조직도는 **이미 대화 컨텍스트에 주어진 경우에만** 참고한다. 조직도 조회 도구를 호출하거나, 조직도를 얻으려고 사용자 토큰·테넌트 ID·현재 사용자 정보를 요청하지 말 것. 컨텍스트에 조직도가 없으면(이 skill 의 일반적 상황) 아래 3번대로 **흐름에 필요한 역할을 그냥 만든다.**
+
 **역할 배정 규칙:**
-1. 회사 조직도가 주어졌다면 적절한 팀을 먼저 찾고, 그 팀의 `type=agent` 팀원을 역할로 **우선** 사용한다. 적절한 agent 가 없으면 그 팀 자체를 역할로 쓴다. **agent 가 아닌 사람(팀원)은 역할로 쓸 수 없다.** 적절한 팀·agent 가 모두 없을 때만 새 역할을 만든다.
+1. (조직도가 **이미 컨텍스트에 주어진 경우에만**) 적절한 팀을 먼저 찾고, 그 팀의 `type=agent` 팀원을 역할로 **우선** 사용한다. 적절한 agent 가 없으면 그 팀 자체를 역할로 쓴다. **agent 가 아닌 사람(팀원)은 역할로 쓸 수 없다.** 적절한 팀·agent 가 모두 없을 때만 새 역할을 만든다.
 2. 조직도에서 가져온 역할이면 `origin: "used"`, 새로 만든 역할이면 `origin: "created"`.
 3. 조직도 정보가 없으면(이 skill 의 일반적 상황) 흐름에 필요한 역할을 만들고 `origin: "created"`, `endpoint` 는 영문 소문자 id 로 임의 생성.
 4. 역할에 **외부 고객/참여자**가 있으면 그 역할의 `endpoint` 는 고정값 `external_customer`.
@@ -191,11 +211,11 @@
 
 ## 출력 형식
 
-- 산출물 `.bpmn/process-definition.json` 에 **valid JSON 객체 1개**로 저장한다. 마크다운/설명/코드펜스/주석 없이 순수 JSON.
+- 산출물 `/workspace/.bpmn/process-definition.json` 에 **valid JSON 객체 1개**로 저장한다. 마크다운/설명/코드펜스/주석 없이 순수 JSON.
 - 설명이 필요하면 JSON 의 `description`/`instruction`/`trigger` 같은 **필드 값(문자열)** 안에 넣는다.
-- 파일에 쓴 뒤, 사용자에게는 자연어로 요약해 보여준다 (초심자에게 raw JSON 을 들이밀지 말 것):
+- 파일에 쓴 뒤, 사용자에게는 자연어로 요약해 보여준다 (사용자에게 raw JSON 을 들이밀지 말 것):
 
-> "프로세스 정의를 만들었어요. **[프로세스명]** — 시작은 [트리거], 단계는 ①~ ②~ ③~ 이고, [분기설명] 갈림길이 있습니다. 역할은 [역할목록] 입니다. (`.bpmn/process-definition.json`)"
+> "프로세스 정의를 만들었어요. **[프로세스명]** — 시작은 [트리거], 단계는 ①~ ②~ ③~ 이고, [분기설명] 갈림길이 있습니다. 역할은 [역할목록] 입니다. (`/workspace/.bpmn/process-definition.json`)"
 
 ---
 
@@ -219,7 +239,7 @@
 - Sequence 는 replace 없음 — add 또는 delete 만.
 - 기존 요소의 위치/이름을 임의로 바꾸지 않는다.
 
-> 이 skill 에서는 파일 기반으로 작업하므로, 실제로는 `.bpmn/process-definition.json` 을 직접 Edit 해서 필드를 추가/수정합니다. modifications 형식은 "무엇을 어떻게 바꿔야 하는지"의 규칙으로 참고하세요.
+> 이 skill 에서는 파일 기반으로 작업하므로, 실제로는 `/workspace/.bpmn/process-definition.json` 을 직접 Edit 해서 필드를 추가/수정합니다. modifications 형식은 "무엇을 어떻게 바꿔야 하는지"의 규칙으로 참고하세요.
 
 ---
 
@@ -227,6 +247,6 @@
 
 JSON 을 만들고 요약을 보여준 뒤:
 
-> "이제 이 프로세스에 **자동화 요소**를 붙일 수 있어요. 반복되는 작업을 재사용 **스킬**로, 담당을 **에이전트**로, 분기 판단을 **DMN 규칙**으로 만들 수 있는데, 어떤 걸 만들지 골라주시면 됩니다."
+> "이제 이 프로세스에 **스킬·에이전트·DMN** 을 붙일 수 있어요. 반복되는 작업을 재사용 **스킬**로, 담당을 **에이전트**로, 분기 판단을 **DMN 규칙**으로 만들 수 있는데, 어떤 걸 만들지 골라주시면 됩니다."
 
 그리고 [03-elicit-artifacts.md](03-elicit-artifacts.md) 를 로드해 3단계(HITL)로 진입합니다.

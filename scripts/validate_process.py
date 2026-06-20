@@ -1,218 +1,261 @@
-"""스킬 서비스 실행 모드: 생성된 프로세스를 실행 엔진으로 검증/자동개선한다.
+"""서비스(ProcessGPT deepagent) 모드 검증 모듈.
 
-pdf2bpmn 의 ProcessValidator(벤더링: scripts/validation/process_validator.py)를
-그대로 사용한다. pdf2bpmn._validate_generated_process 의 콜백 구성(_llm/_save/
-_fetch_instance_state/_cleanup_instance)을 동일하게 주입한다.
+pdf2bpmn 의 ProcessValidator(scripts/validation/process_validator.py, vendored)를
+그대로 사용한다. 이 래퍼는 검증기가 요구하는 의존성(LLM 호출 / 정의 재저장 /
+인스턴스 상태 조회 / 인스턴스 정리)을 Supabase·Anthropic 로 주입한다.
 
-전제(중요): process-gpt-completion 실행 엔진(/initiate·/complete) + 폴링 서비스가
-떠 있고 이 스크립트(=deepagent 샌드박스)에서 HTTP 도달 가능해야 한다.
-엔진에 도달 못 하면 검증은 graceful 하게 건너뛴다.
+엔진(process-gpt-completion)이 COMPLETION_ENGINE_URL 로 도달 가능해야 실제 실행 검증을
+한다. 미설정/미도달이면 검증기가 graceful 하게 skip 한다.
 
 환경변수:
-  SUPABASE_URL, SERVICE_ROLE_KEY(또는 SUPABASE_KEY)
-  COMPLETION_ENGINE_URL            (예: http://process-gpt-completion:8000) — 없으면 검증 skip
-  PDF2BPMN_VALIDATION_ENABLED      (기본 true)
-  PDF2BPMN_VALIDATION_MAX_ITERS    (기본 5)
-  PDF2BPMN_VALIDATION_ADVANCE_TIMEOUT (기본 70)
-  PDF2BPMN_VALIDATION_CLEANUP      (기본 false — 검증 인스턴스 보존)
-  VALIDATION_ACTOR_EMAIL           (선택)
-  # LLM (OpenAI 호환)
-  LLM_MODEL / VALIDATION_LLM_MODEL, LLM_PROXY_URL(or OPENAI_BASE_URL),
-  LLM_PROXY_API_KEY(or OPENAI_API_KEY)
+  COMPLETION_ENGINE_URL           실행 엔진 base URL (없으면 검증 skip)
+  PDF2BPMN_VALIDATION_MAX_ITERS   최대 개선 반복 (기본 5)
+  PDF2BPMN_VALIDATION_ADVANCE_TIMEOUT  제출 후 진행 대기(초, 기본 70)
+  PDF2BPMN_VALIDATION_CLEANUP     검증 인스턴스 삭제 여부 (기본 false)
+  ANTHROPIC_API_KEY               자동교정 LLM (없으면 교정 없이 검증만)
 """
+
 from __future__ import annotations
 
-import asyncio
-import json
 import os
-import sys
+import json
+import asyncio
+import logging
 from typing import Any, Dict, List, Optional
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from validation import ProcessValidator  # noqa: E402
+from validation.process_validator import ProcessValidator
+
+logger = logging.getLogger("bpmn.validate")
 
 
-def _truthy(v: Optional[str], default: bool) -> bool:
-    if v is None:
-        return default
-    return str(v).strip().lower() in ("1", "true", "yes", "on")
-
-
-# --------------------------------------------------------------------------- #
-# LLM (OpenAI 호환) — 검증기가 기대하는 "messages -> 파싱된 JSON dict" 콜백
-# --------------------------------------------------------------------------- #
-def _make_llm_call():
-    model = os.environ.get("VALIDATION_LLM_MODEL") or os.environ.get("LLM_MODEL") or "gpt-4o"
-    # "anthropic:claude-..." 같은 prefix 는 OpenAI 호환 프록시에 맞게 정리
-    if ":" in model and model.split(":", 1)[0] in ("anthropic", "openai", "google"):
-        model = model.split(":", 1)[1]
-    base_url = os.environ.get("LLM_PROXY_URL") or os.environ.get("OPENAI_BASE_URL")
-    api_key = os.environ.get("LLM_PROXY_API_KEY") or os.environ.get("OPENAI_API_KEY")
-
-    async def _llm(messages: List[Dict[str, Any]], max_tokens: int) -> Optional[dict]:
-        try:
-            from openai import AsyncOpenAI
-        except Exception as e:  # noqa: BLE001
-            sys.stderr.write(f"[VALIDATION] openai SDK 없음: {e}\n")
-            return None
-        client = AsyncOpenAI(api_key=api_key, base_url=base_url) if base_url else AsyncOpenAI(api_key=api_key)
-        try:
-            resp = await client.chat.completions.create(
-                model=model,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=0.0,
-                response_format={"type": "json_object"},
-            )
-        except Exception:
-            # response_format 미지원 프록시 폴백
-            resp = await client.chat.completions.create(
-                model=model, messages=messages, max_tokens=max_tokens, temperature=0.0
-            )
-        text = (resp.choices[0].message.content or "").strip()
-        return _parse_json(text)
-
-    return _llm
-
-
-def _parse_json(text: str) -> Optional[dict]:
+# ---------------------------------------------------------------------------
+# 주입 의존성
+# ---------------------------------------------------------------------------
+def _extract_json(text: str) -> Optional[dict]:
     if not text:
         return None
+    t = text.strip()
+    if "```" in t:
+        import re
+        m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", t, re.DOTALL)
+        if m:
+            t = m.group(1)
+    s, e = t.find("{"), t.rfind("}")
+    if s >= 0 and e > s:
+        t = t[s:e + 1]
     try:
-        return json.loads(text)
+        return json.loads(t)
     except Exception:
-        pass
-    import re
+        return None
 
-    m = re.search(r"```(?:json)?\s*([\s\S]*?)```", text, flags=re.IGNORECASE)
-    if m:
+
+def _make_llm_call():
+    """async (messages, max_tokens) -> dict|None.
+
+    ProcessGPT deepagent(core/model.py)와 동일한 우선순위로 LLM 을 고른다:
+      1) LLM_PROXY_URL + LLM_PROXY_API_KEY (OpenAI 호환 프록시)
+      2) ANTHROPIC_API_KEY
+      3) OPENAI_API_KEY
+    하나도 없으면 자동교정 없이 검증만(noop 반환).
+    """
+    model = os.getenv("LLM_MODEL")
+    proxy_url = os.getenv("LLM_PROXY_URL")
+    proxy_key = os.getenv("LLM_PROXY_API_KEY")
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    openai_key = os.getenv("OPENAI_API_KEY")
+
+    def _noop(reason):
+        async def _f(messages, max_tokens):
+            logger.info("[VALIDATE] 자동교정 LLM 비활성: %s", reason)
+            return None
+        return _f
+
+    # --- OpenAI 호환 (프록시 또는 OPENAI_API_KEY) ---
+    def _make_openai_call(*, base_url, api_key, mdl):
         try:
-            return json.loads(m.group(1).strip())
+            from openai import OpenAI  # type: ignore
         except Exception:
-            pass
-    m = re.search(r"\{[\s\S]*\}", text)
-    if m:
+            return _noop("openai 패키지 없음")
+        client = OpenAI(api_key=api_key, base_url=base_url) if base_url \
+            else OpenAI(api_key=api_key)
+
+        async def _call(messages: List[Dict[str, Any]], max_tokens: int) -> Optional[dict]:
+            def _do():
+                resp = client.chat.completions.create(
+                    model=mdl or "gpt-4o",
+                    messages=messages,  # system/user role 그대로 사용
+                    max_tokens=int(max_tokens or 4000),
+                )
+                return resp.choices[0].message.content or ""
+            try:
+                text = await asyncio.to_thread(_do)
+                return _extract_json(text)
+            except Exception as e:
+                logger.warning("[VALIDATE] LLM(OpenAI호환) 호출 실패: %s", e)
+                return None
+        return _call
+
+    if proxy_url and proxy_key:
+        return _make_openai_call(base_url=proxy_url, api_key=proxy_key, mdl=model)
+
+    if anthropic_key:
         try:
-            return json.loads(m.group(0))
+            import anthropic  # type: ignore
         except Exception:
-            pass
-    return None
+            return _noop("anthropic 패키지 없음")
+        client = anthropic.Anthropic(api_key=anthropic_key)
+
+        async def _call_anthropic(messages: List[Dict[str, Any]], max_tokens: int) -> Optional[dict]:
+            sys_parts = [m["content"] for m in messages if m.get("role") == "system"]
+            chat = [m for m in messages if m.get("role") != "system"]
+            system = "\n\n".join(sys_parts) if sys_parts else None
+
+            def _do():
+                kwargs = dict(model=model or "claude-sonnet-4-6",
+                              max_tokens=int(max_tokens or 4000), messages=chat)
+                if system:
+                    kwargs["system"] = system
+                resp = client.messages.create(**kwargs)
+                return "".join(getattr(b, "text", "") for b in resp.content)
+            try:
+                text = await asyncio.to_thread(_do)
+                return _extract_json(text)
+            except Exception as e:
+                logger.warning("[VALIDATE] LLM(Anthropic) 호출 실패: %s", e)
+                return None
+        return _call_anthropic
+
+    if openai_key:
+        return _make_openai_call(base_url=None, api_key=openai_key, mdl=model)
+
+    return _noop("LLM 자격증명 없음(LLM_PROXY_*/ANTHROPIC_API_KEY/OPENAI_API_KEY)")
 
 
-# --------------------------------------------------------------------------- #
-# DB 콜백 (pdf2bpmn 동일)
-# --------------------------------------------------------------------------- #
-def _make_callbacks(sb, tenant_id: str):
-    async def _save_definition(pdid: str, definition: Dict[str, Any]) -> bool:
-        try:
-            existing = sb.table("proc_def").select("uuid").eq("id", pdid).eq("tenant_id", tenant_id).execute()
-            if existing.data:
-                sb.table("proc_def").update({"definition": definition}).eq("uuid", existing.data[0]["uuid"]).execute()
-            else:
-                sb.table("proc_def").update({"definition": definition}).eq("id", pdid).execute()
+def _make_engine_deps(sb, tenant_id: str):
+    """save_definition / fetch_instance_state / cleanup_instance 를 만든다."""
+
+    async def save_definition(proc_def_id: str, definition: dict) -> bool:
+        def _do():
+            sb.table("proc_def").update({"definition": definition}) \
+                .eq("id", proc_def_id).eq("tenant_id", tenant_id).execute()
             return True
-        except Exception as e:  # noqa: BLE001
-            sys.stderr.write(f"[VALIDATION] save_definition 실패: {e}\n")
+        try:
+            return await asyncio.to_thread(_do)
+        except Exception as e:
+            logger.warning("[VALIDATE] 정의 재저장 실패: %s", e)
             return False
 
-    def _fetch_state_sync(proc_inst_id: str) -> Dict[str, Any]:
-        rows = (
-            sb.table("bpm_proc_inst")
-            .select("proc_inst_id,status,current_activity_ids")
-            .or_(f"proc_inst_id.eq.{proc_inst_id},root_proc_inst_id.eq.{proc_inst_id}")
-            .eq("tenant_id", tenant_id)
-            .execute()
-            .data
-        ) or []
+    async def fetch_instance_state(proc_inst_id: str) -> dict:
+        def _do():
+            rows = sb.table("bpm_proc_inst") \
+                .select("proc_inst_id,status,current_activity_ids") \
+                .or_(f"proc_inst_id.eq.{proc_inst_id},root_proc_inst_id.eq.{proc_inst_id}") \
+                .eq("tenant_id", tenant_id).execute().data or []
+            return rows
+        rows = await asyncio.to_thread(_do)
         status = "RUNNING"
-        active: List[str] = []
-        for row in rows:
-            cids = row.get("current_activity_ids") or []
-            if isinstance(cids, str):
-                cids = [cids]
-            if row.get("proc_inst_id") == proc_inst_id:
-                status = row.get("status") or "RUNNING"
-                active.extend(str(c) for c in cids if c)
-            elif str(row.get("status") or "").upper() == "RUNNING":
-                active.extend(str(c) for c in cids if c)
-        return {"status": status, "current_activity_ids": list(dict.fromkeys(active))}
+        current: List[str] = []
+        for r in rows:
+            if str(r.get("proc_inst_id")) == str(proc_inst_id):
+                status = r.get("status") or status
+                cur = r.get("current_activity_ids")
+                if isinstance(cur, list):
+                    current = [str(x) for x in cur]
+                elif isinstance(cur, str) and cur:
+                    try:
+                        parsed = json.loads(cur)
+                        current = [str(x) for x in parsed] if isinstance(parsed, list) \
+                            else [s.strip() for s in cur.split(",") if s.strip()]
+                    except Exception:
+                        current = [s.strip() for s in cur.split(",") if s.strip()]
+                break
+        return {"status": status, "current_activity_ids": current}
 
-    async def _fetch_instance_state(proc_inst_id: str) -> Dict[str, Any]:
-        return await asyncio.to_thread(_fetch_state_sync, proc_inst_id)
+    async def cleanup_instance(proc_inst_id: str) -> None:
+        def _do():
+            for table in ("todolist", "bpm_proc_inst"):
+                try:
+                    sb.table(table).delete() \
+                        .or_(f"proc_inst_id.eq.{proc_inst_id},root_proc_inst_id.eq.{proc_inst_id}") \
+                        .eq("tenant_id", tenant_id).execute()
+                except Exception:
+                    pass
+        await asyncio.to_thread(_do)
 
-    cleanup_enabled = _truthy(os.environ.get("PDF2BPMN_VALIDATION_CLEANUP"), False)
-
-    def _cleanup_sync(proc_inst_id: str) -> None:
-        for table in ("todolist", "bpm_proc_inst"):
-            try:
-                sb.table(table).delete().or_(
-                    f"proc_inst_id.eq.{proc_inst_id},root_proc_inst_id.eq.{proc_inst_id}"
-                ).eq("tenant_id", tenant_id).execute()
-            except Exception:
-                pass
-
-    async def _cleanup_instance(proc_inst_id: str) -> None:
-        if not cleanup_enabled:
-            return
-        await asyncio.to_thread(_cleanup_sync, proc_inst_id)
-
-    return _save_definition, _fetch_instance_state, _cleanup_instance
+    return save_definition, fetch_instance_state, cleanup_instance
 
 
-async def validate(sb, tenant_id: str, proc_def_id: str, process_name: str,
-                   proc_json: Dict[str, Any], forms: Dict[str, Any]) -> Dict[str, Any]:
-    if not _truthy(os.environ.get("PDF2BPMN_VALIDATION_ENABLED"), True):
-        return {"proc_def_id": proc_def_id, "skipped": True, "passed": None,
-                "skip_reason": "검증 비활성화(PDF2BPMN_VALIDATION_ENABLED=false)"}
-    engine = os.environ.get("COMPLETION_ENGINE_URL")
-    if not engine:
-        return {"proc_def_id": proc_def_id, "skipped": True, "passed": None,
-                "skip_reason": "COMPLETION_ENGINE_URL 미설정 — 실행 검증 불가"}
+# ---------------------------------------------------------------------------
+# forms 변환: 계약 forms[] → validator 가 기대하는 {activity_id: {form_id, fields_json}}
+# ---------------------------------------------------------------------------
+def build_forms_map(contract_forms: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    from save_to_supabase import html_to_fields_json
+    out: Dict[str, Dict[str, Any]] = {}
+    for f in contract_forms or []:
+        aid = (f.get("activity_id") or "").strip()
+        if not aid:
+            continue
+        out[aid] = {
+            "form_id": f.get("form_id") or "",
+            "fields_json": f.get("fields_json") or html_to_fields_json(f.get("html") or ""),
+        }
+    return out
 
-    save_def, fetch_state, cleanup = _make_callbacks(sb, tenant_id)
+
+# ---------------------------------------------------------------------------
+# 진입점
+# ---------------------------------------------------------------------------
+async def validate_async(*, sb, tenant_id: str, proc_def_id: str, process_name: str,
+                         definition: Dict[str, Any], forms: List[Dict[str, Any]],
+                         actor_email: Optional[str] = None,
+                         report_path: Optional[str] = None) -> Dict[str, Any]:
+    engine_url = os.getenv("COMPLETION_ENGINE_URL", "").strip()
+    max_iters = int(os.getenv("PDF2BPMN_VALIDATION_MAX_ITERS", "5") or "5")
+    advance_timeout = float(os.getenv("PDF2BPMN_VALIDATION_ADVANCE_TIMEOUT", "70") or "70")
+
+    if not engine_url:
+        return {
+            "proc_def_id": proc_def_id, "process_name": process_name,
+            "passed": None, "skipped": True,
+            "skip_reason": "COMPLETION_ENGINE_URL 미설정 — 검증 skip",
+            "iterations": 0, "repaired": False, "remaining_defects": [],
+            "note": "실행 엔진 URL 이 없어 검증을 건너뜀(저장은 정상).",
+        }
+
+    save_definition, fetch_state, cleanup = _make_engine_deps(sb, tenant_id)
+
+    async def _progress(message: str, pct: int, extra: dict = None) -> None:
+        logger.info("[VALIDATE %s%%] %s", pct, message)
+
     validator = ProcessValidator(
         llm_call=_make_llm_call(),
-        save_definition=save_def,
-        engine_base_url=engine,
+        save_definition=save_definition,
+        engine_base_url=engine_url,
         tenant_id=tenant_id,
         fetch_instance_state=fetch_state,
         cleanup_instance=cleanup,
-        max_iters=int(os.environ.get("PDF2BPMN_VALIDATION_MAX_ITERS") or 5),
-        advance_timeout=float(os.environ.get("PDF2BPMN_VALIDATION_ADVANCE_TIMEOUT") or 70.0),
-        actor_email=os.environ.get("VALIDATION_ACTOR_EMAIL"),
+        max_iters=max_iters,
+        actor_email=actor_email,
+        advance_timeout=advance_timeout,
+        report_path=report_path,
+        logger=logger,
+        progress=_progress,
     )
-    return await validator.validate_and_repair(
-        proc_def_id=proc_def_id, process_name=process_name, proc_json=proc_json, forms=forms,
+    forms_map = build_forms_map(forms)
+    report = await validator.validate_and_repair(
+        proc_def_id=proc_def_id,
+        process_name=process_name,
+        proc_json=definition,
+        forms=forms_map,
     )
+    return report
 
 
-def main() -> int:
-    import argparse
-
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--proc-json", required=True, help="flattened definition JSON path (save_all 산출 definition)")
-    ap.add_argument("--forms", help="forms map JSON path { form_id: {fields_json:[...]} }", default=None)
-    ap.add_argument("--tenant", default=os.environ.get("TENANT_ID") or "localhost")
-    args = ap.parse_args()
-
-    with open(args.proc_json, "r", encoding="utf-8") as fh:
-        proc_json = json.load(fh)
-    forms = {}
-    if args.forms and os.path.exists(args.forms):
-        with open(args.forms, "r", encoding="utf-8") as fh:
-            forms = json.load(fh)
-
-    from save_to_supabase import get_supabase
-
-    sb = get_supabase()
-    proc_def_id = proc_json.get("processDefinitionId") or proc_json.get("id")
-    name = proc_json.get("processDefinitionName") or proc_json.get("name") or proc_def_id
-    report = asyncio.run(validate(sb, args.tenant, proc_def_id, name, proc_json, forms))
-    slim = {k: report.get(k) for k in ("proc_def_id", "passed", "skipped", "skip_reason",
-                                       "iterations", "repaired", "remaining_defects")}
-    print(json.dumps({"validation": slim}, ensure_ascii=False))
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+def validate(*, sb, tenant_id: str, proc_def_id: str, process_name: str,
+             definition: Dict[str, Any], forms: List[Dict[str, Any]],
+             actor_email: Optional[str] = None,
+             report_path: Optional[str] = None) -> Dict[str, Any]:
+    return asyncio.run(validate_async(
+        sb=sb, tenant_id=tenant_id, proc_def_id=proc_def_id, process_name=process_name,
+        definition=definition, forms=forms, actor_email=actor_email, report_path=report_path,
+    ))
