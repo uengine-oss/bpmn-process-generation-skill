@@ -84,7 +84,7 @@ def _make_llm_call():
                 resp = client.chat.completions.create(
                     model=mdl or "gpt-4o",
                     messages=messages,  # system/user role 그대로 사용
-                    max_tokens=int(max_tokens or 4000),
+                    max_completion_tokens=int(max_tokens or 4000),
                 )
                 return resp.choices[0].message.content or ""
             try:

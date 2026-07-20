@@ -10,7 +10,7 @@
 - `/workspace/.bpmn/skills/<safe-name /SKILL.md` (skill-creator 가 생성한 정식 스킬, 선택된 스킬마다 1개 디렉토리)
 - `process-definition.json` 업데이트 (`skills[]` 추가 + 관련 `activity.skills` 채움)
 
-  **항상 동일(단일 모드).** 스킬은 **반드시 skill-creator 로 `/workspace/.bpmn/skills/<safe-name>/SKILL.md` 파일을 생성**(단계 B)한다 — 이 파일이 곧 산출물이며 **외부 업로드·DB 저장은 하지 않는다.** 그런 다음 단계 C 로 `/workspace/.bpmn/process-definition.json` 의 `skills[]`·`activity.skills` 를 `edit_file` 로 반영한다.
+  **항상 동일(단일 모드).** 스킬은 **반드시 skill-creator 로 `/workspace/.bpmn/skills/<safe-name>/SKILL.md` 파일을 생성**(단계 B)한다 — 이 파일이 곧 산출물이며 **외부 업로드·DB 저장은 하지 않는다.** 그런 다음 단계 C에서 `skills[]`·`activity.skills`를 `update_process_definition`으로 반영한다.
 
 ---
 
@@ -108,7 +108,7 @@ description: "신청 전 신청자의 잔여 연차를 확인해 신청 가능 �
 
 ## 단계 C. 프로세스 정의 JSON 반영
 
-`/workspace/.bpmn/process-definition.json` 을 직접 Edit 한다 ([02-generate-definition.md](02-generate-definition.md) 의 "프로세스 변경(수정) 형식" 규칙 준수):
+`update_process_definition`으로 아래 필드를 요소 ID 기준 갱신한다 ([02-generate-definition.md](02-generate-definition.md)의 변경 규칙 준수):
 
 1. **최상위 `skills` 배열에 추가** (없으면 만든다). 각 항목:
    ```json

@@ -37,7 +37,7 @@
 
 ## 프로세스 정의 JSON 반영
 
-`/workspace/.bpmn/process-definition.json` 을 직접 Edit 한다:
+`update_process_definition`으로 아래 필드를 요소 ID 기준 갱신한다:
 
 1. **담당 Activity 의 `agent`** 에 에이전트 식별자를 넣는다. (신규면 새 id, 재사용이면 기존 id.)
    ```json

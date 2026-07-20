@@ -44,6 +44,8 @@
 ## conditionData (각 ExclusiveGateway)
 
 각 ExclusiveGateway 에 대해:
+- **필수 실행 계약**: 바로 전 UserActivity 폼에 분기 판단 전용 `select-field`가 있어야 한다. 선택지의 실제 `value`는 각 outgoing Sequence의 `condition` 문자열과 정확히 같아야 한다(예: `승인`, `반려`). 단순한 요청 메모나 검토 의견 필드는 판단값으로 간주하지 않는다.
+- `conditionData`는 위 결정 필드 하나를 우선 참조한다. 값은 반드시 문자열 배열이며 객체(`{"field": ...}`)를 넣지 않는다.
 - 그 게이트웨이의 **선행 Activity 들의 폼 필드** 중, 분기 조건을 평가할 때 참조해야 하는 필드만 고른다.
 - 후보가 분명치 않으면 폴백: **가장 가까운 선행 Activity 의 모든 폼 필드**를 conditionData 로.
 - ParallelGateway/InclusiveGateway 는 조건 평가가 없으므로 `conditionData: []` (비워둔다).
@@ -52,11 +54,25 @@
 "conditionData": ["leave_approval_form.decision"]
 ```
 
+폼과 시퀀스 예시:
+
+```html
+<select-field name='decision' alias='승인 여부'>
+  <option value='승인'>승인</option>
+  <option value='반려'>반려</option>
+</select-field>
+```
+
+```json
+{"elementType":"Sequence","source":"approval_gateway","target":"execute","condition":"승인"}
+{"elementType":"Sequence","source":"approval_gateway","target":"rework","condition":"반려"}
+```
+
 ---
 
 ## 프로세스 정의 JSON 반영
 
-`/workspace/.bpmn/process-definition.json` 을 직접 Edit:
+`update_process_definition`으로 아래 참조 필드를 요소 ID 기준 갱신:
 1. 각 Activity 의 `inputData` 를 선행 후보로 한정해 채운다(중복 제거, 상한 적용).
 2. 각 ExclusiveGateway 의 `conditionData` 를 채운다.
 3. 메인 `elements` 와 (있으면) 서브프로세스 `children` 양쪽 모두 동기화한다.
@@ -78,4 +94,4 @@
 >
 > 산출물은 `/workspace/.bpmn/` 에 있습니다 (`process-definition.json`, `skills/`, `forms/`). 수정하고 싶은 부분이 있으면 말씀해 주세요."
 
-> 검증(validation) 단계는 이 skill 범위 밖입니다. 사용자가 검증·실행을 원하면 ProcessGPT 본 서비스로 안내합니다.
+> 참조정보 연결 뒤에는 사용자에게 다시 묻지 말고 곧바로 4단계 `validate_process_definition`을 호출한다. 정적 구조 검사와 실제 실행엔진 검증을 모두 통과해야 5단계 완료 전달로 진행한다.

@@ -211,7 +211,7 @@
 
 ## 출력 형식
 
-- 산출물 `/workspace/.bpmn/process-definition.json` 에 **valid JSON 객체 1개**로 저장한다. 마크다운/설명/코드펜스/주석 없이 순수 JSON.
+- 산출물 `/workspace/.bpmn/process-definition.json`에 **valid JSON 객체 1개**를 `write_process_definition`으로 저장한다. 마크다운/설명/코드펜스/주석 없이 순수 JSON.
 - 설명이 필요하면 JSON 의 `description`/`instruction`/`trigger` 같은 **필드 값(문자열)** 안에 넣는다.
 - 파일에 쓴 뒤, 사용자에게는 자연어로 요약해 보여준다 (사용자에게 raw JSON 을 들이밀지 말 것):
 
@@ -221,7 +221,7 @@
 
 ## 프로세스 변경(수정) 형식 — 4~6단계에서 사용
 
-2단계는 **새로 생성**이지만, 4·5·6단계는 이미 만든 JSON 을 **수정**한다. 이미 `process-definition.json` 이 존재하는 상태에서 변경할 때는 전체 재생성이 아니라 **해당 필드만 직접 수정**한다(파일을 Edit). 개념적으로는 ProcessGPT 의 `modifications` 형식과 동일하다:
+2단계는 **새로 생성**이지만 이후 단계는 기존 JSON을 **수정**한다. 기존 요소를 바꿀 때는 전체 재생성이 아니라 `update_process_definition`의 요소 ID 기반 변경으로 해당 필드만 갱신한다. 개념적으로는 ProcessGPT의 `modifications` 형식과 동일하다:
 
 ```json
 {
@@ -239,7 +239,7 @@
 - Sequence 는 replace 없음 — add 또는 delete 만.
 - 기존 요소의 위치/이름을 임의로 바꾸지 않는다.
 
-> 이 skill 에서는 파일 기반으로 작업하므로, 실제로는 `/workspace/.bpmn/process-definition.json` 을 직접 Edit 해서 필드를 추가/수정합니다. modifications 형식은 "무엇을 어떻게 바꿔야 하는지"의 규칙으로 참고하세요.
+> 이 skill에서는 modifications를 `update_process_definition.element_updates`/`top_level_updates`로 전달합니다. 요소 추가·삭제 같은 구조 변경만 완전한 객체를 `write_process_definition`으로 다시 씁니다.
 
 ---
 

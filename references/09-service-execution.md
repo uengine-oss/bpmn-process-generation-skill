@@ -8,7 +8,7 @@
 
 ## 샌드박스 작업 파일 (컨테이너 `/workspace/.bpmn/`)
 
-- `process-definition.json` — **elements[] 형식**(02-generate-definition 규격) processDefinition. 1단계 `write_file` 생성 → 2·3단계 `edit_file` 업데이트 → 4단계 검증이 교정해 다시 씀.
+- `process-definition.json` — **elements[] 형식**(02-generate-definition 규격) processDefinition. 최초·구조 생성은 `write_process_definition`, 2·3단계 필드 갱신은 `update_process_definition`, 4단계 검증은 같은 안전 도구로 교정한다.
 - `skills/<safe-name>/SKILL.md` — 2단계 skill-creator 산출(workspace 파일 산출물, 업로드 없음).
 - `forms/<activity_id>.html` — 3단계 폼(7단계 컴포넌트 규격).
 - `agents.json` — 2단계 에이전트 프로필 배열(없으면 생략).
@@ -23,7 +23,7 @@
 ### 1. 컨설팅 & 프로세스 JSON 생성
 - 문서 업로드면 `/workspace/uploads/<파일>` 을 `read_file`/Read 로 **직접 읽어** as-is 흐름을 파악한다([10-document-intake.md](10-document-intake.md)).
 - 컨설팅 초안을 **`request_human_input`** 으로 제시·승인받는다([01-consulting.md](01-consulting.md)).
-- 승인 흐름을 [02-generate-definition.md](02-generate-definition.md) 규격의 **elements[] JSON** 으로 만들어 `write_file` 로 `/workspace/.bpmn/process-definition.json` 에 쓴다. **반드시 실제 elements(StartEvent·EndEvent·UserActivity·Sequence 등)를 채운다**(placeholder/빈 elements 금지). 흐름 연결은 **Sequence 요소(source/target)** 로 표현한다.
+- 승인 흐름을 [02-generate-definition.md](02-generate-definition.md) 규격의 **elements[] JSON**으로 만들어 `write_process_definition`으로 `/workspace/.bpmn/process-definition.json`에 쓴다. **반드시 실제 elements(StartEvent·EndEvent·UserActivity·Sequence 등)를 채운다**(placeholder/빈 elements 금지). 흐름 연결은 **Sequence 요소(source/target)**로 표현한다.
 
 ### 2. 스킬·에이전트·DMN 후보 선택 & 생성 (산출물 파일)
 - elements 에서 구체 후보를 도출해(규칙: [03-elicit-artifacts.md](03-elicit-artifacts.md)) **`request_human_input`** 으로 묻는다. 후보는 `question` 인자에 `[스킬]`/`[에이전트]`/`[DMN]`(대괄호만) + `• 라벨: 설명` 으로 나열한다(모호어 '자동화 요소' 금지, 빈 질문 금지).
@@ -31,15 +31,15 @@
   - **스킬**: `skill-creator` 로 `/workspace/.bpmn/skills/<safe-name>/SKILL.md` 생성([04-skills.md](04-skills.md)) — workspace 파일 산출물로만 둔다(업로드·저장 없음).
   - **에이전트**: 프로필을 `/workspace/.bpmn/agents.json` 배열로([05-agents.md](05-agents.md)).
   - **DMN**: `dmn_decisions`/`dmn_rules` 를 process-definition.json 안에([06-dmn.md](06-dmn.md)).
-  - `edit_file` 로 process-definition.json 의 `activity.skills`/`activity.agent`/`agentMode`/`orchestration` 반영.
+  - `update_process_definition`으로 `activity.skills`/`activity.agent`/`agentMode`/`orchestration` 반영.
 
 ### 3. 폼 · 참조정보 (자동, 질문 없음)
 - 각 UserActivity 폼을 `/workspace/.bpmn/forms/<activity_id>.html` 로 만든다([07-forms.md](07-forms.md)).
 - 참조정보(`activity.inputData`, gateway `conditionData`)를 process-definition.json 에 반영([08-reference-info.md](08-reference-info.md)).
 
-### 4. 검증 & 자동개선 (최대 5회)
-- **`validate_process_definition()`** 도구를 호출한다. 도구가 흐름 결함(끊긴 시퀀스, startEvent 도달불가, endEvent 미연결, 게이트웨이 없는 분기 등)을 검사하고 결함이 있으면 최대 5회 자동개선해 같은 파일에 다시 쓴다(실엔진·DB 없음).
-- 반환이 `passed:false` 면 `remaining_defects` 를 보고 `edit_file` 로 직접 더 고친 뒤 다시 호출한다.
+### 4. 검증 & 자동개선 (최대 2회)
+- **`validate_process_definition()`** 도구를 호출한다. 먼저 흐름 결함(끊긴 시퀀스, startEvent 도달불가, endEvent 미연결, 게이트웨이 없는 분기 등)을 검사하고 결함이 있으면 최대 2회 자동개선한다. 정적 통과 뒤에는 임시 검증용 정의를 사용해 실제 completion 엔진의 `/initiate`·`/complete` 경로로 start→end 실행을 검증한다. 임시 정의와 검증 인스턴스는 검증 종료 시 삭제하며 사용자 프로세스로 저장하지 않는다.
+- 반환이 `passed:false`면 `remaining_defects`를 보고 필드 수정은 `update_process_definition`, 구조 수정은 `write_process_definition`으로 한 번 보정한 뒤 다시 호출한다. 같은 결함이 반복되면 즉시 실패한다.
 
 ### 5. 생성 완료 안내 (프론트 전달)
 - **`complete_process_generation()`** 도구를 호출한다(인자 없음). 도구가 `/workspace/.bpmn/` 의 산출물(process-definition.json + forms + agents.json + skills)을 모아 **출력계약으로 프론트에 전달**한다. **작업 파일은 보존**한다(자동 삭제 없음 — 산출물 전용).

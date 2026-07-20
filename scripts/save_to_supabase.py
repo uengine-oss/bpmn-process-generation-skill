@@ -233,7 +233,23 @@ def html_to_fields_json(html: str) -> List[Dict[str, Any]]:
         text = (alias_m.group(1) if alias_m else (label_m.group(1) if label_m else key)).strip()
         ftype_m = re.search(r"\btype\s*=\s*['\"]([^'\"]+)['\"]", attrs)
         ftype = ftype_m.group(1).strip() if ftype_m else _FIELD_TAG_TYPE.get(tag, "text")
-        out.append({"key": key, "text": text, "type": ftype})
+        field = {"key": key, "text": text, "type": ftype}
+        if tag == "select-field":
+            options: List[str] = []
+            options_m = re.search(r"\boptions\s*=\s*['\"]([^'\"]+)['\"]", attrs)
+            if options_m:
+                options = [value.strip() for value in options_m.group(1).split("/") if value.strip()]
+            else:
+                close_at = html.lower().find("</select-field>", m.end())
+                body = html[m.end():close_at] if close_at >= 0 else ""
+                options = [
+                    value.strip() for value in re.findall(
+                        r"<option\b[^>]*\bvalue\s*=\s*['\"]([^'\"]+)['\"]", body, re.IGNORECASE
+                    ) if value.strip()
+                ]
+            if options:
+                field["options"] = options
+        out.append(field)
     return out
 
 
