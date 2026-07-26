@@ -6,7 +6,7 @@
 
 산출물:
 - `process-definition.json` 업데이트 (`activity.agent` 채움 + `roles[].endpoint`/`origin` 갱신, 자동화 필드)
-- (선택) 에이전트 프로필을 사람이 보게 하려면 `/workspace/.bpmn/skills/` 옆에 `agents/<candidate_id>.md` 로 메모할 수 있다. 필수는 아님.
+- (선택) 에이전트 프로필을 사람이 보게 하려면 `.bpmn/skills/` 옆에 `agents/<candidate_id>.md` 로 메모할 수 있다. 필수는 아님.
 
 ---
 
@@ -37,7 +37,7 @@
 
 ## 프로세스 정의 JSON 반영
 
-`update_process_definition`으로 아래 필드를 요소 ID 기준 갱신한다:
+`Edit`으로 아래 필드를 요소 ID 기준 갱신한다:
 
 1. **담당 Activity 의 `agent`** 에 에이전트 식별자를 넣는다. (신규면 새 id, 재사용이면 기존 id.)
    ```json

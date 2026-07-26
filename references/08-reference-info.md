@@ -72,7 +72,7 @@
 
 ## 프로세스 정의 JSON 반영
 
-`update_process_definition`으로 아래 참조 필드를 요소 ID 기준 갱신:
+`Edit`으로 아래 참조 필드를 요소 ID 기준 갱신:
 1. 각 Activity 의 `inputData` 를 선행 후보로 한정해 채운다(중복 제거, 상한 적용).
 2. 각 ExclusiveGateway 의 `conditionData` 를 채운다.
 3. 메인 `elements` 와 (있으면) 서브프로세스 `children` 양쪽 모두 동기화한다.
@@ -92,6 +92,6 @@
 > - 폼: 단계별 입력 양식 N개
 > - 참조정보: 각 단계가 이전 입력을 참조하도록 연결
 >
-> 산출물은 `/workspace/.bpmn/` 에 있습니다 (`process-definition.json`, `skills/`, `forms/`). 수정하고 싶은 부분이 있으면 말씀해 주세요."
+> 산출물은 `.bpmn/` 에 있습니다 (`process-definition.json`, `skills/`, `forms/`). 수정하고 싶은 부분이 있으면 말씀해 주세요."
 
-> 참조정보 연결 뒤에는 사용자에게 다시 묻지 말고 곧바로 4단계 `validate_process_definition`을 호출한다. 정적 구조 검사와 실제 실행엔진 검증을 모두 통과해야 5단계 완료 전달로 진행한다.
+> 참조정보 연결 뒤에는 사용자에게 다시 묻지 말고 곧바로 4단계(자체 검증)로 넘어간다. `.bpmn/process-definition.json`을 `Read`로 다시 읽어 [02-generate-definition.md](02-generate-definition.md)의 규칙 체크리스트를 직접 대조하고, 결함이 있으면 보정한 뒤에만 5단계 완료 안내로 진행한다.
